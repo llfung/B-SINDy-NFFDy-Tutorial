@@ -39,7 +39,7 @@ scatter!(sol.t, odedata'; color=[1 2], label="")
 ## Inverse problem - Bayesian inference
 @model function fitlv(data, prob)
     # Prior distributions.
-    σ ~ InverseGamma(2, 3)
+    σ2 ~ InverseGamma(2, 3)
     α ~ truncated(Normal(1.5, 0.5); lower=0.5, upper=2.5)
     β ~ truncated(Normal(1.2, 0.5); lower=0, upper=2)
     γ ~ truncated(Normal(3.0, 0.5); lower=1, upper=4)
@@ -51,7 +51,7 @@ scatter!(sol.t, odedata'; color=[1 2], label="")
 
     # Observations.
     for i in 1:length(predicted)
-        data[:, i] ~ MvNormal(predicted[i], σ^2 * I)
+        data[:, i] ~ MvNormal(predicted[i], σ2 * I)
     end
 
     return nothing
@@ -59,5 +59,21 @@ end
 
 model = fitlv(odedata, prob)
 
-# Sample 3 independent chains with forward-mode automatic differentiation (the default).
-chain = sample(model, NUTS(), MCMCSerial(), 1000, 3; progress=true)
+# Sample with forward-mode automatic differentiation (the default).
+chain = sample(model, NUTS(), 1000; progress=true)
+
+## Data Retrodiction
+plot(; legend=false)
+posterior_samples = sample(chain[[:α, :β, :γ, :δ]], 300; replace=false)
+for p in eachrow(Array(posterior_samples))
+    sol_p = solve(prob, Tsit5(); p=p, saveat=0.1)
+    plot!(sol_p; alpha=0.1, color="#BBBBBB")
+end
+
+# Plot simulation and noisy observations.
+plot!(sol; color=[1 2], linewidth=1)
+scatter!(sol.t, odedata'; color=[1 2])
+
+## Using MAP instead
+map_estimate = maximum_a_posteriori(model,initial_params=mean(chain).nt.mean)
+StatsBase.coeftable(map_estimate)
